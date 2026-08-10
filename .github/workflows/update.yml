@@ -1,0 +1,32 @@
+name: Update Gator Theater Calendar
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # Runs daily at 8:00 AM UTC
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run calendar scraper
+        run: python update_gator_cal.py
+
+      - name: Commit and push updated .ics file
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add gator_theater.ics
+          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update gator_theater.ics"
+          git push
