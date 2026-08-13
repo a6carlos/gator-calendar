@@ -2,8 +2,8 @@ name: Update Gator Theater Calendar
 
 on:
   schedule:
-    - cron: '0 8 * * *' # Runs daily at 8:00 AM UTC
-  workflow_dispatch: # Allows manual trigger
+    - cron: '0 8 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -28,5 +28,10 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add gator_theater.ics
-          git diff --quiet && git diff --staged --quiet || git commit -m "Auto-update gator_theater.ics"
-          git push
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-update gator_theater.ics"
+            git pull --rebase origin main
+            git push
+          fi
