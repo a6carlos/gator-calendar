@@ -9,7 +9,7 @@ BEGIN:VEVENT
 SUMMARY:Wildwood
 DTSTART;TZID=America/New_York:20261121T130000
 DTEND;TZID=America/New_York:20261121T151000
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611211300-1@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
@@ -17,7 +17,7 @@ BEGIN:VEVENT
 SUMMARY:Clayface
 DTSTART;TZID=America/New_York:20261121T160000
 DTEND;TZID=America/New_York:20261121T174800
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611211600-2@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
@@ -25,7 +25,7 @@ BEGIN:VEVENT
 SUMMARY:Free Sneak Preview The Man with the Bag- When Santa Clauss iconic magical red bag of presents is stolen by a disgruntled\, rogue elf named Nadia Nyce\, Christmas is placed in serious jeopardy. With time running out before Christmas Eve\, Santa recruits Vancea skilled former thief pulled straight from the "Naughty List". Vance assembles a crew of eccentric\, criminally skilled misfits to pull off an unexpected holiday heist to recover the bag and save the season. Rated PG
 DTSTART;TZID=America/New_York:20261122T140000
 DTEND;TZID=America/New_York:20261122T163000
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611221400-3@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
@@ -33,7 +33,7 @@ BEGIN:VEVENT
 SUMMARY:Christmas at the Kringles
 DTSTART;TZID=America/New_York:20261128T130000
 DTEND;TZID=America/New_York:20261128T144000
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611281300-4@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
@@ -41,7 +41,7 @@ BEGIN:VEVENT
 SUMMARY:Wicker
 DTSTART;TZID=America/New_York:20261128T160000
 DTEND;TZID=America/New_York:20261128T174500
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611281600-5@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
@@ -49,7 +49,7 @@ BEGIN:VEVENT
 SUMMARY:Wicker
 DTSTART;TZID=America/New_York:20261129T130000
 DTEND;TZID=America/New_York:20261129T144500
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611291300-6@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
@@ -57,7 +57,7 @@ BEGIN:VEVENT
 SUMMARY:Street Fighter
 DTSTART;TZID=America/New_York:20261129T160000
 DTEND;TZID=America/New_York:20261129T180500
-DTSTAMP:20261116T174638Z
+DTSTAMP:20261117T171734Z
 UID:gator-202611291600-7@carlconti
 LOCATION:Gator Theater\, JEBLC\, Virginia Beach\, VA
 END:VEVENT
