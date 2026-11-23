@@ -80,7 +80,6 @@ def extract_movie_title(movie_cell) -> str:
             return title
 
     raw = clean_text(movie_cell.get_text(" ", strip=True))
-    # Trim long descriptions or rating suffixes on non-linked special rows
     raw = re.split(r"\s+(?:When\s+|Rated\s+(?:G|PG-13|PG|R|NC-17)\b)", raw)[0]
     return clean_text(raw)
 
@@ -122,8 +121,7 @@ def main():
     current_date = None
     default_year = datetime.datetime.now().year
 
-    showtimes_container = soup.find("div", class_="showtimes") or soup
-    for tr in showtimes_container.find_all("tr"):
+    for tr in soup.find_all("tr"):
         if tr.find("th", colspan=True):
             header_text = clean_text(tr.get_text(" ", strip=True))
             found_date = parse_date_from_text(header_text, default_year)
