@@ -1,15 +1,48 @@
-import re
 import datetime
-import requests
+import re
 from bs4 import BeautifulSoup
+import requests
 
-# Setup target URL and custom headers
 URL = "https://www.navymwrmidlant.com/programs/704df338-a0bc-4c33-94f3-9a75abd01d1a"
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+    )
+}
 
-def escape_ical(text):
-    """Escapes commas and semicolons per RFC 5545 specifications."""
-    return text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;")
+DATE_PATTERN = re.compile(
+    r"(?:(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*[-,–—]\s*)?"
+    r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+"
+    r"(\d{1,2})(?:\s*,\s*(\d{4}))?",
+    re.IGNORECASE,
+)
+TIME_PATTERN = re.compile(r"\b(\d{1,2}:\d{2})\s*([APap][Mm])\b")
+
+
+def clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
+
+
+def escape_ical(text: str) -> str:
+    return (
+        text.replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;")
+    )
+
+
+def parse_date_from_text(text: str, default_year: int):
+    match = DATE_PATTERN.search(text)
+    if not match:
+        return None
+    _, month_str, day_str, year_str = match.groups()
+    year = int(year_str) if year_str else default_year
+    try:
+        return datetime.datetime.strptime(
+            f"{month_str.capitalize()} {int(day_str)} {year}", "%B %d %Y"
+        ).date()
+    except ValueError:
+        return None
+
 
 def main():
     print("Fetching schedule from MWR Mid-Atlantic...")
@@ -20,63 +53,104 @@ def main():
         print(f"Error downloading page: {e}")
         return
 
+    print(
+        f"Fetched {len(response.text)} chars from final URL: {response.url}"
+    )
     soup = BeautifulSoup(response.text, "html.parser")
     events = []
-
-    # Parse schedule components
     current_date = None
-    for element in soup.find_all(["h3", "h4", "div", "table"]):
-        text = element.get_text(strip=True)
+    default_year = datetime.datetime.now().year
 
-        # Parse date headings (e.g. "Saturday - August 15, 2026")
-        date_match = re.search(
-            r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*[-,\s]\s*([A-Za-z]+)\s+(\d{1,2})(?:\s*,\s*(\d{4}))?",
-            text,
-        )
-        if date_match:
-            _, month_str, day_str, year_str = date_match.groups()
-            year = int(year_str) if year_str else datetime.datetime.now().year
-            try:
-                current_date = datetime.datetime.strptime(
-                    f"{month_str} {day_str} {year}", "%B %d %Y"
-                ).date()
-            except ValueError:
-                continue
+    # First pass: walk block elements in document order
+    for element in soup.find_all(["h2", "h3", "h4", "p", "li", "tr"]):
+        text = clean_text(element.get_text(" ", strip=True))
+        if not text:
+            continue
 
-        # Extract showtimes from table rows
-        if current_date and element.name == "table":
-            for row in element.find_all("tr"):
-                cols = [td.get_text(strip=True) for td in row.find_all("td")]
-                if len(cols) >= 2 and ("PM" in cols[0] or "AM" in cols[0]):
-                    time_str = cols[0]
-                    title = cols[1]
+        found_date = parse_date_from_text(text, default_year)
+        if found_date and len(text) < 80:
+            current_date = found_date
+            continue
 
-                    # Parse start time
+        if element.name == "tr":
+            cols = [
+                clean_text(td.get_text(" ", strip=True))
+                for td in element.find_all(["td", "th"])
+            ]
+            cols = [c for c in cols if c]
+            if current_date and len(cols) >= 2:
+                time_match = TIME_PATTERN.search(" ".join(cols))
+                if time_match:
+                    time_norm = f"{time_match.group(1)} {time_match.group(2).upper()}"
                     try:
-                        time_obj = datetime.datetime.strptime(time_str, "%I:%M %p").time()
-                        start_dt = datetime.datetime.combine(current_date, time_obj)
+                        time_obj = datetime.datetime.strptime(
+                            time_norm, "%I:%M %p"
+                        ).time()
                     except ValueError:
                         continue
 
-                    # Extract runtime or set standard default (150 mins)
-                    runtime_mins = 150
-                    for col in cols:
-                        rt_match = re.search(r"(\d+)\s*min", col)
-                        if rt_match:
-                            runtime_mins = int(rt_match.group(1))
-                            break
+                    # Pick the non-time column as title
+                    title_candidates = [
+                        c for c in cols if not TIME_PATTERN.search(c)
+                    ]
+                    title = title_candidates[0] if title_candidates else cols[1]
 
-                    end_dt = start_dt + datetime.timedelta(minutes=runtime_mins)
+                    runtime_mins = 150
+                    rt_match = re.search(
+                        r"(\d+)\s*min", " ".join(cols), re.IGNORECASE
+                    )
+                    if rt_match:
+                        runtime_mins = int(rt_match.group(1))
+
+                    start_dt = datetime.datetime.combine(
+                        current_date, time_obj
+                    )
+                    end_dt = start_dt + datetime.timedelta(
+                        minutes=runtime_mins
+                    )
                     events.append({
                         "title": title,
                         "start": start_dt.strftime("%Y%m%dT%H%M%S"),
                         "end": end_dt.strftime("%Y%m%dT%H%M%S"),
-                        "uid": f"gator-{start_dt.strftime('%Y%m%d%H%M')}-{len(events)+1}@carlconti"
+                        "uid": f"gator-{start_dt.strftime('%Y%m%d%H%M')}-{len(events)+1}@carlconti",
                     })
 
-    now_utc = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        elif current_date:
+            time_match = TIME_PATTERN.search(text)
+            if time_match:
+                time_norm = f"{time_match.group(1)} {time_match.group(2).upper()}"
+                try:
+                    time_obj = datetime.datetime.strptime(
+                        time_norm, "%I:%M %p"
+                    ).time()
+                except ValueError:
+                    continue
 
-    # Build RFC 5545 compliant iCalendar payload with iOS refresh metadata
+                title_part = TIME_PATTERN.sub("", text).strip(" -–—|:")
+                if title_part:
+                    runtime_mins = 150
+                    rt_match = re.search(
+                        r"(\d+)\s*min", text, re.IGNORECASE
+                    )
+                    if rt_match:
+                        runtime_mins = int(rt_match.group(1))
+
+                    start_dt = datetime.datetime.combine(
+                        current_date, time_obj
+                    )
+                    end_dt = start_dt + datetime.timedelta(
+                        minutes=runtime_mins
+                    )
+                    events.append({
+                        "title": title_part,
+                        "start": start_dt.strftime("%Y%m%dT%H%M%S"),
+                        "end": end_dt.strftime("%Y%m%dT%H%M%S"),
+                        "uid": f"gator-{start_dt.strftime('%Y%m%d%H%M')}-{len(events)+1}@carlconti",
+                    })
+
+    now_utc = datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y%m%dT%H%M%SZ"
+    )
     ics_lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -96,17 +170,21 @@ def main():
             f"DTSTAMP:{now_utc}",
             f"UID:{ev['uid']}",
             "LOCATION:Gator Theater\\, JEBLC\\, Virginia Beach\\, VA",
-            "END:VEVENT"
+            "END:VEVENT",
         ])
 
     ics_lines.append("END:VCALENDAR")
 
-    # Save output file
     output_filename = "gator_theater.ics"
     with open(output_filename, "w", encoding="utf-8", newline="\r\n") as f:
         f.write("\n".join(ics_lines))
 
-    print(f"Success! Updated calendar file saved as '{output_filename}' with {len(events)} events.")
+    print(
+        f"Success! Updated calendar file saved as '{output_filename}' with {len(events)} events."
+    )
 
+
+if __name__ == "__main__":
+    main()
 if __name__ == "__main__":
     main()
