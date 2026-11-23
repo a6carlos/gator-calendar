@@ -4,7 +4,10 @@ import re
 import subprocess
 from bs4 import BeautifulSoup
 
-URL = "https://www.navymwrmidlant.com/programs/704df338-a0bc-4c33-94f3-9a75abd01d1a"
+URL = (
+    "https://www.navymwr.org/programs/motion-pictures/theaters"
+    "?id=f05ab221-ed69-41e0-89d7-abf5e0032e38"
+)
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -18,6 +21,7 @@ DATE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 TIME_PATTERN = re.compile(r"\b(\d{1,2}:\d{2})\s*([APap][Mm])\b")
+RUNTIME_PATTERN = re.compile(r"(\d+)\s*min", re.IGNORECASE)
 
 
 def clean_text(text: str) -> str:
@@ -68,6 +72,28 @@ def parse_date_from_text(text: str, default_year: int):
         return None
 
 
+def extract_movie_title(movie_cell) -> str:
+    link = movie_cell.find("a")
+    if link:
+        title = clean_text(link.get_text(" ", strip=True))
+        if title:
+            return title
+
+    raw = clean_text(movie_cell.get_text(" ", strip=True))
+    # Trim long descriptions or rating suffixes on non-linked special rows
+    raw = re.split(r"\s+(?:When\s+|Rated\s+(?:G|PG-13|PG|R|NC-17)\b)", raw)[0]
+    return clean_text(raw)
+
+
+def parse_runtime_minutes(runtime_cell, default_mins: int = 150) -> int:
+    if not runtime_cell:
+        return default_mins
+    match = RUNTIME_PATTERN.search(clean_text(runtime_cell.get_text(" ", strip=True)))
+    if match:
+        return int(match.group(1))
+    return default_mins
+
+
 def existing_ics_has_events(path: str) -> bool:
     if not os.path.exists(path):
         return False
@@ -79,7 +105,7 @@ def existing_ics_has_events(path: str) -> bool:
 
 
 def main():
-    print("Fetching schedule from MWR Mid-Atlantic via curl...")
+    print("Fetching schedule from Navy MWR via curl...")
     try:
         html = fetch_html_with_curl(URL)
     except Exception as e:
@@ -96,96 +122,57 @@ def main():
     current_date = None
     default_year = datetime.datetime.now().year
 
-    for element in soup.find_all(["h2", "h3", "h4", "p", "li", "tr", "div"]):
-        text = clean_text(element.get_text(" ", strip=True))
-        if not text:
+    showtimes_container = soup.find("div", class_="showtimes") or soup
+    for tr in showtimes_container.find_all("tr"):
+        if tr.find("th", colspan=True):
+            header_text = clean_text(tr.get_text(" ", strip=True))
+            found_date = parse_date_from_text(header_text, default_year)
+            if found_date:
+                current_date = found_date
             continue
 
-        found_date = parse_date_from_text(text, default_year)
-        if found_date and len(text) < 80:
-            current_date = found_date
+        if tr.find("th"):
             continue
 
-        if element.name == "tr":
-            cols = [
-                clean_text(td.get_text(" ", strip=True))
-                for td in element.find_all(["td", "th"])
-            ]
-            cols = [c for c in cols if c]
-            if current_date and len(cols) >= 2:
-                time_match = TIME_PATTERN.search(" ".join(cols))
-                if time_match:
-                    time_norm = (
-                        f"{time_match.group(1)} {time_match.group(2).upper()}"
-                    )
-                    try:
-                        time_obj = datetime.datetime.strptime(
-                            time_norm, "%I:%M %p"
-                        ).time()
-                    except ValueError:
-                        continue
+        tds = tr.find_all("td")
+        if not current_date or len(tds) < 2:
+            continue
 
-                    title_candidates = [
-                        c for c in cols if not TIME_PATTERN.search(c)
-                    ]
-                    title = (
-                        title_candidates[0] if title_candidates else cols[1]
-                    )
+        time_text = clean_text(tds[0].get_text(" ", strip=True))
+        time_match = TIME_PATTERN.search(time_text)
+        if not time_match:
+            continue
 
-                    runtime_mins = 150
-                    rt_match = re.search(
-                        r"(\d+)\s*min", " ".join(cols), re.IGNORECASE
-                    )
-                    if rt_match:
-                        runtime_mins = int(rt_match.group(1))
+        time_norm = f"{time_match.group(1)} {time_match.group(2).upper()}"
+        try:
+            time_obj = datetime.datetime.strptime(time_norm, "%I:%M %p").time()
+        except ValueError:
+            continue
 
-                    start_dt = datetime.datetime.combine(
-                        current_date, time_obj
-                    )
-                    end_dt = start_dt + datetime.timedelta(
-                        minutes=runtime_mins
-                    )
-                    events.append({
-                        "title": title,
-                        "start": start_dt.strftime("%Y%m%dT%H%M%S"),
-                        "end": end_dt.strftime("%Y%m%dT%H%M%S"),
-                        "uid": f"gator-{start_dt.strftime('%Y%m%d%H%M')}-{len(events)+1}@carlconti",
-                    })
+        title = extract_movie_title(tds[1])
+        if not title:
+            continue
 
-        elif element.name in {"p", "li"} and current_date:
-            time_match = TIME_PATTERN.search(text)
-            if time_match:
-                time_norm = (
-                    f"{time_match.group(1)} {time_match.group(2).upper()}"
-                )
-                try:
-                    time_obj = datetime.datetime.strptime(
-                        time_norm, "%I:%M %p"
-                    ).time()
-                except ValueError:
-                    continue
+        rating_img = tds[2].find("img") if len(tds) >= 3 else None
+        rating = (
+            clean_text(rating_img.get("alt", "")).upper()
+            if rating_img and rating_img.get("alt")
+            else ""
+        )
+        summary = f"{title} ({rating})" if rating else title
 
-                title_part = TIME_PATTERN.sub("", text).strip(" -–—|:")
-                if title_part:
-                    runtime_mins = 150
-                    rt_match = re.search(
-                        r"(\d+)\s*min", text, re.IGNORECASE
-                    )
-                    if rt_match:
-                        runtime_mins = int(rt_match.group(1))
+        runtime_mins = parse_runtime_minutes(
+            tds[3] if len(tds) >= 4 else None, default_mins=150
+        )
+        start_dt = datetime.datetime.combine(current_date, time_obj)
+        end_dt = start_dt + datetime.timedelta(minutes=runtime_mins)
 
-                    start_dt = datetime.datetime.combine(
-                        current_date, time_obj
-                    )
-                    end_dt = start_dt + datetime.timedelta(
-                        minutes=runtime_mins
-                    )
-                    events.append({
-                        "title": title_part,
-                        "start": start_dt.strftime("%Y%m%dT%H%M%S"),
-                        "end": end_dt.strftime("%Y%m%dT%H%M%S"),
-                        "uid": f"gator-{start_dt.strftime('%Y%m%d%H%M')}-{len(events)+1}@carlconti",
-                    })
+        events.append({
+            "summary": summary,
+            "start": start_dt.strftime("%Y%m%dT%H%M%S"),
+            "end": end_dt.strftime("%Y%m%dT%H%M%S"),
+            "uid": f"gator-{start_dt.strftime('%Y%m%d%H%M')}-{len(events)+1}@carlconti",
+        })
 
     if not events and existing_ics_has_events(OUTPUT_FILENAME):
         print(
@@ -209,7 +196,7 @@ def main():
     for ev in events:
         ics_lines.extend([
             "BEGIN:VEVENT",
-            f"SUMMARY:{escape_ical(ev['title'])}",
+            f"SUMMARY:{escape_ical(ev['summary'])}",
             f"DTSTART;TZID=America/New_York:{ev['start']}",
             f"DTEND;TZID=America/New_York:{ev['end']}",
             f"DTSTAMP:{now_utc}",
